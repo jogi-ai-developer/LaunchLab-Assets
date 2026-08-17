@@ -1,2 +1,28 @@
-# LaunchLab-Frontend
-LaunchLab is an AI-powered campaign planning tool that transforms a product, target audience, and budget into structured campaign ideas, channel recommendations, budget allocation, ad copy, and risk insights. Built as a full-stack AI workflow with a deterministic logic layer and campaign history dashboard.
+# LaunchLab Frontend
+
+LaunchLab is a frontend-only campaign planning workspace. Enter a product, target audience, and budget to generate a structured mock campaign plan, or review five realistic mock campaigns in the dashboard.
+
+## Routes
+
+- / — Campaign Generator
+- /admin — Campaign Dashboard
+
+## Run locally
+
+Requires Node.js 20+ and pnpm.
+
+```bash
+pnpm install
+pnpm run dev
+```
+
+Then open http://localhost:5173.
+
+## Build
+
+```bash
+pnpm run typecheck
+pnpm run build
+```
+
+This stage intentionally has no backend, database, authentication, AI integration, or real API calls.
