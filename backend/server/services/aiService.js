@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { AppError } from "../utils/errors.js";
+import { LAUNCHLAB_AI_SYSTEM_PROMPT } from "./aiSystemPrompt.js";
 
 const MODEL = "gemini-2.5-flash";
 
@@ -28,27 +29,9 @@ function getGeminiClient() {
 
 export function buildCampaignPrompt({ product, audience, budget }) {
   return `
-You are a senior campaign strategist creating a concise launch plan.
-
 Product: ${product}
 Target audience: ${audience}
 Working budget: ${budget}
-
-Return ONLY valid JSON. Do not wrap the response in markdown fences.
-The JSON must have this exact shape:
-{
-  "campaignIdeas": [
-    { "title": "string", "description": "string" }
-  ],
-  "adCopies": [
-    { "variant": "benefit-led", "headline": "string", "body": "string", "cta": "string" },
-    { "variant": "urgency-led", "headline": "string", "body": "string", "cta": "string" }
-  ],
-  "suggestedChannels": ["string"]
-}
-
-Generate exactly 3 campaign ideas, exactly 2 ad copy variants, and 3 to 5 suggested marketing channels.
-Keep the copy specific to the product and audience. Do not invent metrics, testimonials, or guarantees.
 `.trim();
 }
 
@@ -127,6 +110,7 @@ export async function generateCampaignContent(input) {
     model: MODEL,
     contents: [{ role: "user", parts: [{ text: buildCampaignPrompt(input) }] }],
     config: {
+      systemInstruction: LAUNCHLAB_AI_SYSTEM_PROMPT,
       responseMimeType: "application/json",
       maxOutputTokens: 8192,
       temperature: 0.4,
