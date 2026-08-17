@@ -1,10 +1,22 @@
 const CHANNELS = ["Instagram", "TikTok", "YouTube", "Google", "Facebook", "LinkedIn", "Influencers"];
-const BUDGET_WEIGHTS = [0.4, 0.3, 0.2, 0.1];
+const AI_CANDIDATE_BONUS = 5;
+const ALLOCATION_WEIGHTS = {
+  1: [1],
+  2: [0.4, 0.6],
+  3: [0.4, 0.3, 0.3],
+  4: [0.4, 0.3, 0.2, 0.1],
+};
 
 export function determineBudgetTier(budget) {
   if (budget < 5000) return "Small";
   if (budget <= 25000) return "Medium";
   return "Large";
+}
+
+export function maxChannelsForBudget(budget) {
+  if (budget < 5000) return 2;
+  if (budget <= 25000) return 3;
+  return 4;
 }
 
 function addScores(scores, channels, amount) {
@@ -13,9 +25,35 @@ function addScores(scores, channels, amount) {
   }
 }
 
-export function scoreChannels(audience) {
+function normalizeSuggestedChannels(suggestedChannels = []) {
+  const aliases = {
+    Instagram: ["instagram"],
+    TikTok: ["tiktok"],
+    YouTube: ["youtube"],
+    Google: ["google", "search", "ppc"],
+    Facebook: ["facebook"],
+    LinkedIn: ["linkedin"],
+    Influencers: ["influencer", "creator", "micro-influencer"],
+  };
+  const normalizedCandidates = new Set();
+
+  for (const suggestion of suggestedChannels) {
+    if (typeof suggestion !== "string") continue;
+    const normalizedSuggestion = suggestion.toLowerCase();
+    for (const [channel, channelAliases] of Object.entries(aliases)) {
+      if (channelAliases.some((alias) => normalizedSuggestion.includes(alias))) {
+        normalizedCandidates.add(channel);
+      }
+    }
+  }
+
+  return normalizedCandidates;
+}
+
+export function scoreChannels(audience, suggestedChannels = []) {
   const normalizedAudience = audience.toLowerCase();
   const scores = Object.fromEntries(CHANNELS.map((channel) => [channel, 45]));
+  const aiCandidates = normalizeSuggestedChannels(suggestedChannels);
 
   if (/(18|19|20|21|22|23|24|college|student|gen z|young)/.test(normalizedAudience)) {
     addScores(scores, ["Instagram", "TikTok", "YouTube"], 35);
@@ -33,17 +71,26 @@ export function scoreChannels(audience) {
 
   if (/(b2b|business|founder|enterprise|hr|recruit|professional services)/.test(normalizedAudience)) {
     addScores(scores, ["LinkedIn", "Google"], 35);
-    addScores(scores, ["Facebook"], -5);
+    addScores(scores, ["Facebook"], -20);
   }
+
+  addScores(scores, [...aiCandidates], AI_CANDIDATE_BONUS);
 
   return Object.entries(scores)
     .map(([channel, score]) => ({ channel, score: Math.max(0, Math.min(100, score)) }))
     .sort((left, right) => right.score - left.score || left.channel.localeCompare(right.channel));
 }
 
-export function allocateBudget(budget, channelScores) {
+export function selectRecommendedChannels(budget, channelScores) {
+  return channelScores
+    .slice(0, maxChannelsForBudget(budget))
+    .map(({ channel }) => channel);
+}
+
+export function allocateBudget(budget, channelScores, channelLimit = maxChannelsForBudget(budget)) {
   const totalCents = Math.round(budget * 100);
-  const channels = channelScores.slice(0, 4);
+  const channels = channelScores.slice(0, Math.max(1, Math.min(4, channelLimit)));
+  const weights = ALLOCATION_WEIGHTS[channels.length];
   let allocatedCents = 0;
 
   const allocation = {};
@@ -51,16 +98,24 @@ export function allocateBudget(budget, channelScores) {
     const cents =
       index === channels.length - 1
         ? totalCents - allocatedCents
-        : Math.round(totalCents * BUDGET_WEIGHTS[index]);
+        : Math.round(totalCents * weights[index]);
     allocation[channel] = cents / 100;
     allocatedCents += cents;
   });
+
+  const allocatedTotalCents = Object.values(allocation).reduce(
+    (sum, amount) => sum + Math.round(amount * 100),
+    0,
+  );
+  if (allocatedTotalCents !== totalCents) {
+    throw new Error("Budget allocation must equal the supplied budget.");
+  }
 
   return allocation;
 }
 
 function findVariant(adCopies, variant) {
-  return adCopies.find((copy) => copy.variant.toLowerCase() === variant);
+  return adCopies.find((copy) => copy?.variant?.toLowerCase() === variant);
 }
 
 export function ensureAbVariants(adCopies, { product, audience }) {
@@ -105,15 +160,19 @@ export function assessRisk(budget, channelCount) {
 }
 
 export function buildCampaignLogic({ input, aiOutput }) {
-  const channelScores = scoreChannels(input.audience);
-  const budgetAllocation = allocateBudget(input.budget, channelScores);
+  const channelScores = scoreChannels(input.audience, aiOutput.suggestedChannels);
+  const recommendedChannels = selectRecommendedChannels(input.budget, channelScores);
+  const recommendedScores = recommendedChannels.map((channel) =>
+    channelScores.find((entry) => entry.channel === channel),
+  );
+  const budgetAllocation = allocateBudget(input.budget, recommendedScores, recommendedChannels.length);
 
   return {
     budgetTier: determineBudgetTier(input.budget),
     channelScores,
-    recommendedChannels: Object.keys(budgetAllocation),
+    recommendedChannels,
     budgetAllocation,
     abVariants: ensureAbVariants(aiOutput.adCopies, input),
-    risk: assessRisk(input.budget, Object.keys(budgetAllocation).length),
+    risk: assessRisk(input.budget, recommendedChannels.length),
   };
 }
