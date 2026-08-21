@@ -1,14 +1,16 @@
 import { ArrowRight, Check, ClipboardList, LoaderCircle, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { CampaignResults, createCampaignResult, type CampaignResult } from "@/components/CampaignResults";
+import { CampaignResults } from "@/components/CampaignResults";
 import { ActionLink, LaunchLabShell, PageEyebrow } from "@/components/LaunchLabShell";
+import { createCampaign, type Campaign } from "@/lib/campaign-api";
 
 export default function CampaignGeneratorPage() {
   const [product, setProduct] = useState("");
   const [audience, setAudience] = useState("");
   const [budget, setBudget] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<CampaignResult | null>(null);
+  const [result, setResult] = useState<Campaign | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "Campaign Generator | LaunchLab";
@@ -22,15 +24,34 @@ export default function CampaignGeneratorPage() {
     meta.setAttribute("content", description);
   }, []);
 
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!product.trim() || !audience.trim() || !budget.trim()) return;
+    setError(null);
+    if (!product.trim() || !audience.trim()) {
+      setError("Add a product and target audience before generating your campaign.");
+      return;
+    }
+
+    const numericBudget = Number(budget);
+    if (!budget.trim() || !Number.isFinite(numericBudget) || numericBudget <= 0) {
+      setError("Enter a valid budget greater than 0.");
+      return;
+    }
+
     setLoading(true);
     setResult(null);
-    window.setTimeout(() => {
-      setResult(createCampaignResult(product.trim(), audience.trim(), budget));
+    try {
+      const campaign = await createCampaign({
+        product: product.trim(),
+        audience: audience.trim(),
+        budget: numericBudget,
+      });
+      setResult(campaign);
+    } catch {
+      setError("Unable to generate campaign");
+    } finally {
       setLoading(false);
-    }, 1100);
+    }
   };
 
   return (
@@ -60,10 +81,16 @@ export default function CampaignGeneratorPage() {
             <form onSubmit={submit} className="space-y-4">
               <label className="block"><span className="mb-1.5 block text-xs font-bold">Product</span><input data-testid="input-product" value={product} onChange={(event) => setProduct(event.target.value)} placeholder="What are you taking to market?" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/55 focus:border-primary focus:ring-2 focus:ring-primary/15" /></label>
               <label className="block"><span className="mb-1.5 block text-xs font-bold">Target audience</span><input data-testid="input-target-audience" value={audience} onChange={(event) => setAudience(event.target.value)} placeholder="College students aged 18–24" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/55 focus:border-primary focus:ring-2 focus:ring-primary/15" /></label>
-              <label className="block"><span className="mb-1.5 block text-xs font-bold">Budget</span><input data-testid="input-budget" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="$10,000" inputMode="numeric" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/55 focus:border-primary focus:ring-2 focus:ring-primary/15" /><span className="mt-1.5 block text-[11px] text-muted-foreground">Your total working media budget.</span></label>
+              <label className="block"><span className="mb-1.5 block text-xs font-bold">Budget</span><input data-testid="input-budget" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="₹10,000" inputMode="numeric" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/55 focus:border-primary focus:ring-2 focus:ring-primary/15" /><span className="mt-1.5 block text-[11px] text-muted-foreground">Your total working media budget.</span></label>
               <button type="submit" disabled={loading || !product.trim() || !audience.trim() || !budget.trim()} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-xs font-extrabold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-generate-campaign">
                 {loading ? <><LoaderCircle size={15} className="animate-spin" /> Generating plan</> : <>Generate campaign <ArrowRight size={15} /></>}
               </button>
+              {error && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700" role="alert" data-testid="state-campaign-generation-error">
+                  <p className="font-extrabold">{error}</p>
+                  <p className="mt-1 text-red-700/80">Something went wrong while generating your campaign. Please try again.</p>
+                </div>
+              )}
             </form>
             <div className="mt-7 border-t border-border pt-5">
               <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Your report includes</p>
